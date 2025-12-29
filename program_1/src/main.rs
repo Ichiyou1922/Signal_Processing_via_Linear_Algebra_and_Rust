@@ -1,8 +1,18 @@
-use std::process::exit;
-use std::ops::{Add, AddAssign, Mul};
+use std::ops::{Add, Mul};
+use std::f64::consts::{PI};
 
 fn main() {
     println!("Hello, world!");
+    let mut sig = Vec::new();
+    
+    for i in 0..8 {
+        sig.push(Complex::new(1.0, 0.0))
+    }
+    let mut spectrum = Signal::new(sig);
+    spectrum = Signal::dft(&spectrum);
+    for i in 0..8 {
+        println!("data{}: {}+i{}", i, spectrum.data[i].re, spectrum.data[i].im);
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -72,5 +82,29 @@ impl Signal {
         }
 
         Ok(sum)
+    }
+
+    fn basis(n: usize, k: usize) -> Signal {
+        // 周波数 k の基底ベクトル e_k を生成
+        let mut data = Vec::with_capacity(n);
+        for i in 0..n {
+            data.push(Complex::new((2.0 * PI * k as f64 * i as f64 / n as f64).cos(), (2.0 * PI * k as f64 * i as f64 / n as f64).sin()));
+        }
+
+        Signal::new(data)
+    }
+
+    // DFT: X[k] = <x, e_k>
+    fn dft(&self) -> Signal {
+        let n = self.data.len();
+        let mut spectrum_data = Vec::with_capacity(n);
+
+        for k in 0..n {
+            let e_k = Signal::basis(n, k);
+            let x_k = self.inner_product(&e_k).unwrap(); // <x, e_k>
+            spectrum_data.push(x_k);
+        }
+
+        Signal::new(spectrum_data)
     }
 }
