@@ -196,21 +196,495 @@ $$
 
 # 3. 方法 (Methods)
 ## 3.1 実験環境・使用機器 (Environment & Equipment)
-* OS: 
-* Compiler: 
-* Hardware: 
+* Language: Rust (1.92.0)
+* Libraries: Standard Library only (std::ops, std::f64)
+* Visualization: Python (Matplotlib)
 
-## 3.2 手順 (Procedure)
-以下の手順で実験を行った．
+## 3.2 実装の設計
+信号を複素数ベクトル構造体`Signal`として定義し，演算子オーバーロードにより内積及びアダマール積を実装した．
+
+## 3.3 使用したコード
+- Rustにより記述されたメインプログラム
+
+```Rust
+use std::ops::{Add, Mul};
+use std::f64::consts::{PI};
+
+fn main() {
+    // println!("Hello, world!");
+   
+    println!("k,mag_rect,mag_hann");
+
+    // 信号生成: 周波数2.5(非整数)->スペクトル漏れが発生するはず
+    let mut sig_data = Vec::new();
+    let n = 32;
+    for i in 0..n {
+        let t = i as f64;
+        sig_data.push(Complex::new((2.0 * PI * 2.5 * t / n as f64).sin(), 0.0)); // n as f64 を 8 とするミスがあった->完全な信号になってしまう
+    }
+    let raw_signal = Signal::new(sig_data);
+
+    // 窓なし->DFT
+    let spec_rect = raw_signal.dft();
+
+    // ハニング窓を適用->DFT
+    let hanning_window = Signal::create_hanning(n);
+    let windowed_signal = raw_signal.clone() * hanning_window;
+    let spec_hann = windowed_signal.dft();
+
+    // データ出力
+    for k in 0..n {
+        let mag_r = spec_rect.data[k].norm();
+        let mag_h = spec_hann.data[k].norm() * 2.0; //2.0はハニング窓による減衰の補正
+        println!("{},{:.6},{:.6}", k, mag_r, mag_h);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Complex {
+    re: f64,
+    im: f64,
+}
+
+impl Mul for Complex {
+    type Output = Complex;
+
+    fn mul(self, other: Complex) -> Complex {
+        Complex {
+            re: self.re * other.re - self.im * other.im,
+            im: self.re * other.im + self.im * other.re,
+        }
+    }
+}
+
+impl Add for Complex {
+    type Output = Complex;
+    fn add(self, other: Complex) -> Complex {
+        Complex {
+            re: self.re + other.re,
+            im: self.im + other.im,
+        }
+    }
+}
+
+impl Complex {
+    fn new(re: f64, im: f64) -> Complex {
+        Complex {
+            re,
+            im,
+        }
+    }
+
+    fn conjugate(&self) -> Complex {
+        Complex {
+            re: self.re,
+            im: -1.0 * self.im,
+        }
+    }
+
+    fn norm(&self) -> f64 {
+        (self.re * self.re + self.im * self.im).sqrt()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Signal {
+    data: Vec<Complex>,
+}
+
+// アダマール積
+impl Mul for Signal {
+    type Output = Signal;
+
+    fn mul(self, other: Signal) -> Signal {
+        if self.data.len() != other.data.len() {
+            panic!("Vector dimension mismatch in Hadamard product");
+        }
+
+        let mut new_data = Vec::with_capacity(self.data.len());
+        for i in 0..self.data.len() {
+            new_data.push(self.data[i] * other.data[i]);
+        }
+        Signal::new(new_data)
+    }
+}
+
+impl Signal {
+    fn new(data: Vec<Complex>) -> Signal {
+        Signal {
+            data,
+        }
+    }
+
+    fn inner_product(&self, other: &Signal) -> Result<Complex, String> {
+        if self.data.len() != other.data.len() {
+           return Err("Vector sizes differ".to_string());
+        }
+
+        let mut sum = Complex::new(0.0, 0.0);
+
+        for i in 0..self.data.len() {
+            let term = self.data[i] * other.data[i].conjugate();
+            sum = sum + term;
+        }
+        Ok(sum)
+    }
+
+    fn basis(n: usize, k: usize) -> Signal {
+        // 周波数 k の基底ベクトル e_k を生成
+        let mut data = Vec::with_capacity(n);
+        for i in 0..n {
+            let theta = 2.0 * PI * (k as f64) * (i as f64) / (n as f64);
+            data.push(Complex::new(theta.cos(), theta.sin()));
+        }
+        Signal::new(data)
+    }
+
+    // DFT: X[k] = <x, e_k>
+    // 信号xを基底e_kに射影する
+    fn dft(&self) -> Signal {
+        let n = self.data.len();
+        let mut spectrum_data = Vec::with_capacity(n);
+
+        for k in 0..n {
+            let e_k = Signal::basis(n, k);
+            let x_k = self.inner_product(&e_k).unwrap(); // <x, e_k>
+            spectrum_data.push(x_k);
+        }
+
+        Signal::new(spectrum_data)
+    }
+
+    // ハニング窓の生成
+    // w[n] = 0.5 - 0.5 * cos(2πn / (N-1))
+    fn create_hanning(n: usize) -> Signal {
+        let mut hanning = Vec::with_capacity(n);
+        for i in 0..n {
+            hanning.push(Complex::new(0.5 - 0.5 * (2.0 * PI * i as f64 / (n as f64 - 1.0)).cos(), 0.0));
+        }
+        Signal::new(hanning)
+    }
+}
+```
+
+
+- Pythonにより記述された，出力結果をビジュアル化するためのプログラム
+
+```Python
+import sys
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# 標準入力からデータを読み込み
+try:
+    df = pd.read_csv(sys.stdin)
+except Exception as e:
+    print("Error reading CSV:", e)
+    sys.exit(1)
+
+# プロット設定
+plt.figure(figsize=(10, 6))
+
+# 矩形窓 (Rectangular) - 青色・破線
+plt.plot(df['k'], df['mag_rect'], label='Rectangular (No Window)', 
+         marker='o', linestyle='--', color='blue', alpha=0.6)
+
+# ハニング窓 (Hanning) - 赤色・実線
+plt.plot(df['k'], df['mag_hann'], label='Hanning Window', 
+         marker='s', linestyle='-', color='red', linewidth=2)
+
+# グラフ装飾
+plt.title('Spectrum Leakage Analysis: Rectangular vs Hanning')
+plt.xlabel('Frequency Index k')
+plt.ylabel('Magnitude (Linear)')
+plt.grid(True)
+plt.legend()
+plt.xticks(df['k'][::2]) # 目盛りを適度に間引く
+
+# 保存または表示
+plt.savefig('spectrum_analysis.png')
+print("Graph saved to 'spectrum_analysis.png'")
+# plt.show()
+```
+
+- Rustにより記述された逆DFTの精度確認用プログラム
+
+```Rust
+use std::ops::{Add, Mul, Sub}; // Subを追加
+use std::f64::consts::PI;
+
+fn main() {
+    // 1. 信号生成 (Original Signal)
+    let n = 8; // 検証用なので少なめでOK
+    let mut sig_data = Vec::new();
+    for i in 0..n {
+        let t = i as f64;
+        // 複雑な信号を作る: 2.5Hz + 1.0Hz の合成波
+        let val = (2.0 * PI * 2.5 * t / n as f64).sin() + 0.5 * (2.0 * PI * 1.0 * t / n as f64).cos();
+        sig_data.push(Complex::new(val, 0.0));
+    }
+    let original = Signal::new(sig_data);
+
+    // 2. DFT (Analysis)
+    // 時間領域 -> 周波数領域
+    let spectrum = original.dft();
+
+    // 3. IDFT (Synthesis)
+    // 周波数領域 -> 時間領域
+    // スペクトルから元の波形を復元する
+    let reconstructed = spectrum.idft();
+
+    // 4. 検証 (Verification)
+    // 元の信号と復元信号の差（誤差）を確認する
+    println!("Index | Original (Re) | Recon (Re) | Error");
+    println!("------+---------------+------------+-------------");
+    
+    let mut max_error = 0.0;
+    for i in 0..n {
+        let orig_re = original.data[i].re;
+        let recon_re = reconstructed.data[i].re;
+        let error = (orig_re - recon_re).abs();
+        
+        if error > max_error {
+            max_error = error;
+        }
+
+        println!("{:5} | {:13.8} | {:10.8} | {:.4e}", i, orig_re, recon_re, error);
+    }
+
+    println!("-------------------------------------------------");
+    println!("Max Reconstruction Error: {:.4e}", max_error);
+    
+    if max_error < 1e-10 {
+        println!("Result: SUCCESS. F^(-1) * F = I is proved.");
+    } else {
+        println!("Result: FAILED. Check the implementation.");
+    }
+}
+
+// --- 構造体定義 ---
+
+#[derive(Debug, Clone, Copy)]
+struct Complex {
+    re: f64,
+    im: f64,
+}
+
+impl Complex {
+    fn new(re: f64, im: f64) -> Complex {
+        Complex { re, im }
+    }
+    fn conjugate(&self) -> Complex {
+        Complex { re: self.re, im: -1.0 * self.im }
+    }
+    fn norm(&self) -> f64 {
+        (self.re * self.re + self.im * self.im).sqrt()
+    }
+}
+
+impl Mul for Complex {
+    type Output = Complex;
+    fn mul(self, other: Complex) -> Complex {
+        Complex {
+            re: self.re * other.re - self.im * other.im,
+            im: self.re * other.im + self.im * other.re,
+        }
+    }
+}
+
+impl Add for Complex {
+    type Output = Complex;
+    fn add(self, other: Complex) -> Complex {
+        Complex {
+            re: self.re + other.re,
+            im: self.im + other.im,
+        }
+    }
+}
+
+// Subトレイトの実装（誤差計算用）
+impl Sub for Complex {
+    type Output = Complex;
+    fn sub(self, other: Complex) -> Complex {
+        Complex {
+            re: self.re - other.re,
+            im: self.im - other.im,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Signal {
+    data: Vec<Complex>,
+}
+
+impl Signal {
+    fn new(data: Vec<Complex>) -> Signal {
+        Signal { data }
+    }
+
+    fn inner_product(&self, other: &Signal) -> Result<Complex, String> {
+        let mut sum = Complex::new(0.0, 0.0);
+        for i in 0..self.data.len() {
+            sum = sum + self.data[i] * other.data[i].conjugate();
+        }
+        Ok(sum)
+    }
+
+    fn basis(n: usize, k: usize) -> Signal {
+        let mut data = Vec::with_capacity(n);
+        for i in 0..n {
+            let theta = 2.0 * PI * (k as f64) * (i as f64) / (n as f64);
+            data.push(Complex::new(theta.cos(), theta.sin()));
+        }
+        Signal::new(data)
+    }
+
+    fn dft(&self) -> Signal {
+        let n = self.data.len();
+        let mut spectrum_data = Vec::with_capacity(n);
+        for k in 0..n {
+            let e_k = Signal::basis(n, k);
+            let x_k = self.inner_product(&e_k).unwrap(); 
+            spectrum_data.push(x_k);
+        }
+        Signal::new(spectrum_data)
+    }
+    
+    // IDFT: x[n] = (1/N) * sum( X[k] * e_k )
+    // スペクトル成分を重みとして，基底ベクトルを足し合わせる
+    fn idft(&self) -> Signal {
+        let n = self.data.len();
+        // ゼロで初期化した信号ベクトルを作成
+        let mut reconstructed_data = vec![Complex::new(0.0, 0.0); n];
+
+        for k in 0..n {
+            let X_k = self.data[k];       // スペクトル係数
+            let e_k = Signal::basis(n, k); // 基底ベクトル (波)
+
+            // 線形結合: vec += X_k * e_k
+            for i in 0..n {
+                // X_k * e_k[i]
+                let term = X_k * e_k.data[i];
+                reconstructed_data[i] = reconstructed_data[i] + term;
+            }
+        }
+
+        // 最後に 1/N で正規化
+        for i in 0..n {
+            reconstructed_data[i].re /= n as f64;
+            reconstructed_data[i].im /= n as f64;
+        }
+
+        Signal::new(reconstructed_data)
+    }
+}
+
+// 必要ないが一応残しておく
+impl Mul for Signal {
+    type Output = Signal;
+    fn mul(self, other: Signal) -> Signal {
+         let mut new_data = Vec::with_capacity(self.data.len());
+        for i in 0..self.data.len() {
+            new_data.push(self.data[i] * other.data[i]);
+        }
+        Signal::new(new_data)
+    }
+}
+```
 
 # 4. 結果 (Results)
-得られたデータを以下に示す．
+## 4.1 メインプログラムの出力結果
+![Result1](/home/yoichi1922/src/github.com/Ichiyou1922/Signal_Processing_via_Linear_Algebra_and_Rust/program_1/src/spectrum_analysis.png)
+
+また，csvファイルに結果を出力した（可読性のために空白を追加した）．
+```csv
+k, mag_rect, mag_hann
+0, 3.992224, 0.787802
+1, 4.768133, 3.137013
+2, 11.234895,13.242323
+3, 9.343534, 13.317712
+4, 2.696554, 3.007223
+5, 1.444447, 0.397724
+6, 0.944233, 0.125344
+7, 0.686336, 0.053566
+8, 0.534511, 0.026927
+9, 0.437690, 0.014963
+10,0.372762, 0.008877
+11,0.327930, 0.005489
+12,0.296657, 0.003460
+13,0.275125, 0.002163
+14,0.261046, 0.001271
+15,0.253071, 0.000605
+16,0.250487, 0.000163
+17,0.253071, 0.000605
+18,0.261046, 0.001271
+19,0.275125, 0.002163
+20,0.296657, 0.003460
+21,0.327930, 0.005489
+22,0.372762, 0.008877
+23,0.437690, 0.014963
+24,0.534511, 0.026927
+25,0.686336, 0.053566
+26,0.944233, 0.125344
+27,1.444447, 0.397724
+28,2.696554, 3.007223
+29,9.343534, 13.317712
+30,11.234895,13.242323
+31,4.768133, 3.137013
+```
+
+## 4.2 逆DFTプログラムの出力結果
+
+```Bash
+Index | Original (Re) | Recon (Re) | Error
+------+---------------+------------+-------------
+    0 |    0.50000000 | 0.50000000 | 9.9920e-16
+    1 |    1.27743292 | 1.27743292 | 0.0000e0
+    2 |   -0.70710678 | -0.70710678 | 5.5511e-16
+    3 |   -0.73623682 | -0.73623682 | 6.6613e-16
+    4 |    0.50000000 | 0.50000000 | 7.7716e-16
+    5 |   -0.73623682 | -0.73623682 | 1.1102e-16
+    6 |   -0.70710678 | -0.70710678 | 2.2204e-16
+    7 |    1.27743292 | 1.27743292 | 4.4409e-16
+-------------------------------------------------
+Max Reconstruction Error: 9.9920e-16
+Result: SUCCESS. F^(-1) * F = I is proved.
+```
 
 # 5. 考察 (Discussion)
 結果より，以下の知見が得られた．
 
+## 5.1 矩形窓とハニング窓における結果の違い
+4.1節の結果を見ると，理論通りの結果が得られていることが即座に理解できる．
+
+ハニング窓適用前，すなわち矩形窓のグラフでは，周波数が非整数のために「スペクトル漏れ」が発生していることが分かる．ピークにおけるエネルギーは全周波数帯に散り，本来関係のない中心 $k=16$ においても，0.25程度エネルギーが残ってしまっている．
+
+それに対して，ハニング窓適用後のグラフでは，目的の周波数付近で即座にエネルギーが小さくなっている．そのためピーク帯におけるエネルギーは，矩形窓のピークにおける値よりも大きくなっている（補整を考慮してもエネルギーの散らばらなさによる影響が優勢である）．また，理論通り，ピークの山が潰れていることが分かる．
+
+以上より，ハニング窓の適用は理論通り，周波数分解能を低下させるが，スペクトル漏れによる信号の汚染を防ぐことができていることが分かった．
+
+## 5.2 逆DFT行列による逆行の正確性
+4.2節の結果には，実際に与えた信号の実部と，逆DFT行列により求められた逆算した信号，そしてその差が記載されている．差の最大誤差を見ると`9.9920e-16`であり，この $10^{-16}$ という数値はコンピュータが表現できるゼロの限界値「マシンイプシロン」である．すなわち，与えた信号ベクトルと，逆算した信号ベクトルは限りなく近い．
+
+以上より，導出した逆DFT行列は正しく機能していることが分かった．
+
+## 5.3 計算量の観点: DFTとFFT
+本実装では，定義通りのりさんフーリエ変換（DFT）を採用した．
+
+DFTは $N$ 次元ベクトルに対する $N\times N$ 行列の乗算であるため，その計算量オーダーは $O(N^2)$ となる．
+
+$$
+\mathbf{X} = F_N \mathbf{x} \quad \Rightarrow \quad N^2 \text{ complex multiplications }
+$$
+
+一方，実用上で広く用いられる高速フーリエ変換（FFT）は，行列 $F_N$ の対称性を利用して，再帰的に計算を行うアルゴリズムであり，計算量は $O(N \log N)$ に削減される．
+
+$$
+\frac{O(N^2)}{O(N \log N)} = \frac{N}{\log N}
+$$
+
+$N=1024$ の場合，この比は約100倍となるが，本実験の様な小規模な $N$ においては，行列演算としての構造的明瞭さを優先し，DFTの実装を採用した．
+
 # 6. 結論 (Conclusion)
 以上の結果より，本実験の目的は達成されたと結論づけられる．
-
-# 参考文献 (References)
-[1] 

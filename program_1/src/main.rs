@@ -11,7 +11,8 @@ fn main() {
     let n = 32;
     for i in 0..n {
         let t = i as f64;
-        sig_data.push(Complex::new((2.0 * PI * 2.5 * t / 8.0).sin(), 0.0));
+        sig_data.push(Complex::new((2.0 * PI * 2.5 * t / n as f64).sin(), 0.0));
+        //sig_data.push(Complex::new(1.0, 0.0));
     }
     let raw_signal = Signal::new(sig_data);
 
