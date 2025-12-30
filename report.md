@@ -12,175 +12,188 @@ header-includes:
 
 # 1. 目的 (Objective)
 本レポートの目的は2つ．
+
 - 信号処理論において学んだ，フーリエ変換・窓関数・高速フーリエ変換を線形代数の視点から捉え直すこと(理論)．
 - 離散フーリエ変換・高速フーリエ変換の計算量の差について記述する(アルゴリズム)．
 
 # 2. 理論 (Theory)
-本実験で使用する基本原理について述べる．
+
+本実験で使用する基本原理について，線形代数的な観点から記述する．
+
 ## 2.1 フーリエ変換における基底変換
-任意の信号 $\mathbf{x}$ は「時刻t=kのとき値が1」であるインパルス信号 $\mathbf{e_k}$ を用いて線型結合で表せる．
-```math
-\mathbf{x}=x[0]\mathbf{e}_0+x[1]\mathbf{e}_1+\dots +x[N-1]\mathbf{e}_{N-1}\in \mathbb{C}^N
-```
 
-フーリエ変換では，「時間ごとのインパルス」という基底を「周波数ごとの正弦波ベクトル」に取り替える．
+長さ $N$ の任意の離散信号 $\mathbf{x} \in \mathbb{C}^N$ は，「時刻 $t=k$ のとき値が $1$」であるインパルス信号（標準基底） $\mathbf{e}_k$ を用いた線形結合で表せる．
 
-信号 $\mathbf{x}$ の中に特定の成分(例: 基本波 $\mathbf{v}$ )がどれだけ含まれているのか知るためにはこの2つのベクトルの内積を取れば良い．
+$$
+\mathbf{x} = x[0]\mathbf{e}_0 + x[1]\mathbf{e}_1 + \dots + x[N-1]\mathbf{e}_{N-1}
+$$
 
-エルミート内積を以下で定義する．
-```math
-\langle \mathbf{a}, \mathbf{b} \rangle = \Sum_{n=0}^{N-1}a[n]\cdot \bar b[n]
-```
+フーリエ変換の本質は，この「時間ごとのインパルス」という基底を，「周波数ごとの正弦波ベクトル（複素正弦波）」という別の直交基底に取り替える座標変換である．
 
-もし基底ベクトル $\mathbf{u}_k$ が長さ1(正規化済み)であれば，信号 $\mathbf{x}$ との内積は， $\mathbf{x}$ の $\mathbf{u}_k$ 方向への影の長さ(成分の大きさ)を与える．
-```math
-成分c_k=\langle \mathbf{x}, \mathbf{u}_k \rangle
-```
+信号 $\mathbf{x}$ の中に特定の周波数成分（基底ベクトル $\mathbf{u}_k$）がどれだけ含まれているかを知るためには，信号と基底の内積を取ればよい．複素ベクトル空間におけるエルミート内積を以下で定義する．
 
-フーリエ係数 $\int x(t) e^{-i \omega t} dt$ とは無限次元ベクトル $x(t)$ と基底ベクトル $e^{-i\omega t}$ の内積を表していると言える．
+$$
+\langle \mathbf{a}, \mathbf{b} \rangle = \sum_{n=0}^{N-1} a[n] \cdot \overline{b[n]}
+$$
 
-## 2.2 リーマン和
-離散和 $\Sum$ から積分 $\int$ への移行において， $dt$ は不可欠な役割を担っている．
+もし基底ベクトル $\mathbf{u}_k$ が正規化（長さ $1$）されていれば，信号 $\mathbf{x}$ との内積は，$\mathbf{x}$ の $\mathbf{u}_k$ 方向への射影成分（影の長さ）を与える．
 
-無限次元の関数空間において，単に $f(t)\cdot g(t)$ を無限個足し合わせれば，値は発散しうる．
+$$
+c_k = \langle \mathbf{x}, \mathbf{u}_k \rangle
+$$
 
-これを防ぐのが「リーマン和」の思想である．
+連続時間におけるフーリエ係数 $\int x(t) e^{-i \omega t} dt$ は，無限次元ベクトル $x(t)$ と基底ベクトル $e^{i\omega t}$ の内積操作そのものである．
 
-区間TをN等分した幅を $\Delta t = T/N$ とする．
+## 2.2 リーマン和による連続への移行
 
-連続信号の内積は，この微小幅 $\Delta t$ をかけた長方形の面積の総和の極限として定義される．
-```math
-\langle f, g \rangle = \Sum_{n=0}^{N-1}f(t_n)\cdot \bar g(t_n)\cdot \Delta t = \int_{0}^{T}f(t)\cdot \bar g(t) dt
-```
+離散和 $\sum$ から積分 $\int$ への移行において，微小時間 $dt$ は内積の定義において不可欠な役割を担う．無限次元の関数空間において，単に $f(t) \cdot \overline{g(t)}$ を無限個足し合わせれば値は発散しうるためである．
 
-## 2.3 三角関数の直交性と長さからフーリエ係数の公式へ
-インパルス基底を三角関数系{1, cost, sint, cos2t, \dots}に変換したい．ここで，三角関数系は直交しているのか，長さはどうなっているのかという点が重要である．
+区間 $T$ を $N$ 等分した幅を $\Delta t = T/N$ とする．連続信号の内積は，この微小幅 $\Delta t$ を重みとしたリーマン和の極限として定義される．
 
-三角関数系は区間 $[0, 2\pi]$ において直交していることが知られているため，この点は問題ない．また後述するオイラーの公式による三角関数の指数変換により簡単に示すことができる．
+$$
+\langle f, g \rangle = \lim_{N \to \infty} \sum_{n=0}^{N-1} f(t_n) \cdot \overline{g(t_n)} \cdot \Delta t = \int_{0}^{T} f(t) \cdot \overline{g(t)} dt
+$$
 
-2.1においては影の長さを求める際に基底ベクトルが正規化済みだと仮定した．しかし多くの場合，基底ベクトルの長さは1ではない．よって，より一般的に影の長さを求めるためには以下のように記述する必要がある．
-```math
-成分c_k = \frac{\langle \mathbf{x}, \mathbf{v}}{\langle \mathbf{v}, \mathbf{v} \rangle}=\frac{\langle \mathbf{x}, \mathbf{v}}{\|v \| ^2}
-```
+## 2.3 三角関数の直交性と正規化
 
-交流成分( $cos(nt), sin(nt)$ )の長さについて調べる．
-```math
-\|cosnt \| ^2 = \int_{-\infty}^{\infty}cos^2(nt) dt=\pi \quad (\text{sin(nt)も同様})
-```
+インパルス基底を三角関数系 $\{1, \cos t, \sin t, \cos 2t, \dots\}$ に変換する場合，基底の「直交性」と「ノルム（長さ）」を確認する必要がある．
+三角関数系は区間 $[0, 2\pi]$ において互いに直交する．
 
-よって長さは $\sqrt{\pi}$ ．
+2.1節では基底ベクトルが正規化済みであると仮定したが，一般に基底ベクトル $\mathbf{v}$ の長さは $1$ とは限らない．その場合，射影成分（フーリエ係数）を求めるには，基底自身の長さの二乗（ノルムの二乗）で除算する必要がある．
 
-直流成分(1)の長さについて調べる．
-```math
-\|1 \| ^2 = \int_{-\infty}^{\infty}1^2 dt = 2\pi
-```
+$$
+c_k = \frac{\langle \mathbf{x}, \mathbf{v} \rangle}{\langle \mathbf{v}, \mathbf{v} \rangle} = \frac{\langle \mathbf{x}, \mathbf{v} \rangle}{\|\mathbf{v}\|^2}
+$$
 
-よって長さは $\sqrt{2\pi$ ．
+交流成分 $\cos(nt), \sin(nt)$ の区間 $[0, 2\pi]$ におけるノルムの二乗は以下のようになる．
 
-前述した射影公式に代入することでフーリエ係数の公式は導かれる．
-```math
-a_n = \frac{1}{\pi}\int_{-\pi}^{\pi}f(t)cos(nt)dt \quad (n \ge 1)
-```
+$$
+\|\cos(nt)\|^2 = \int_{0}^{2\pi} \cos^2(nt) dt = \pi \quad (\sin(nt)\text{も同様})
+$$
 
-```math
-a_0 = \frac{1}{2\pi}\int_{-\pi}^{\pi}f(t)\cdot 1 dt
-```
+よって長さは $\sqrt{\pi}$ である．一方，直流成分（$1$）のノルムの二乗は，
 
-## 2.4 オイラーの公式 
-実フーリエ係数では， $cos(nt), sin(nt)$ という2つの基底を管理しなければならなかった．しかし，オイラーの公式( $e^{i\theta}=cos\theta + isin\theta$ )はこれらを「回転するベクトル」として統合する．
+$$
+\|1\|^2 = \int_{0}^{2\pi} 1^2 dt = 2\pi
+$$
 
-基底を $u_n (t)=e^{int}$ とすれば，区間 $[0, 2\pi]$ における長さは，
-```math
-\| e^{int} \| = \int_{0}^{2\pi}e^{int} \bar e^{int} dt=\int_{0}^{2\pi}a dt=2\pi
-```
+となり，長さは $\sqrt{2\pi}$ である．これらを射影公式に代入することで，実フーリエ級数の係数公式が導かれる．
 
-驚くべきことに，複素指数関数基底はすべてのnで長さが $\2pi$ で一定である．故に係数 $c_n$ の公式は，
-```math
-c_n=\frac{1}{2\pi}\int_{0}^{2\pi}f(t)e^{-int} dt 
-```
+$$
+a_n = \frac{1}{\pi}\int_{-\pi}^{\pi} f(t)\cos(nt) dt \quad (n \ge 1)
+$$
+$$
+a_0 = \frac{1}{2\pi}\int_{-\pi}^{\pi} f(t) \cdot 1 dt
+$$
 
-として統一される．更にこれを利用して複素フーリエ級数は，
-```math
-f(t)=\Sum_{n=-\infty}^{\infty}c_n e^{int}
-```
+## 2.4 オイラーの公式と複素指数関数基底
 
-として表せる．
+実フーリエ級数では $\cos, \sin$ という2種類の基底を管理する必要があるが，オイラーの公式 $e^{i\theta} = \cos\theta + i\sin\theta$ を用いることで，これらを「複素平面上を回転するベクトル」として統合できる．
 
-負の整数nまで考えているが，これにより三角関数系に含まれるすべての成分をまとめて記述できる．なぜならすべての三角関数は $cos(nt)=\frac{e^{int}+e^{-int}}{2}, sin(nt)=\frac{e^{int}-e^{-int}}{2i}$ と記述でき，正の回転，負の回転の組み合わせにより一意に決定されるためである．
+基底を $u_n(t) = e^{int}$ とすれば，区間 $[0, 2\pi]$ におけるノルムの二乗は，
 
-## 2.5 離散化
-連続信号 $x(t)$ を区間 $[0, 2\pi]$ で考える変わりに，これをN個の点にサンプリングしたベクトル $\mathbf{x}=[x[0], \dots, x[N-1]]$ を考える．
+$$
+\| e^{int} \|^2 = \int_{0}^{2\pi} e^{int} \overline{e^{int}} dt = \int_{0}^{2\pi} 1 dt = 2\pi
+$$
 
-基底関数 $e^{i\omega t}$ も同様に離散化する．
+となり，全ての整数 $n$ において一定値 $2\pi$ をとる．これにより，複素フーリエ係数 $c_n$ の公式は統一的に記述できる．
 
-周波数kの基底ベクトル $\mathbf{w}_k$ の第n成分は以下のように書ける．
-```math
-w_k[n]=e^{i\frac{2\pi}{N}kn}\quad (n=0, 1, \dots, N-1)
-```
+$$
+c_n = \frac{1}{2\pi}\int_{0}^{2\pi} f(t)e^{-int} dt
+$$
 
-異なる周波数kとl( $k\neq l$ )を持つ2つの基底ベクトルの内積を取ると，
-```math
-\langle \mathbf{w}_k , \mathbf{w}_l \rangle = \Sum_{n=0}^{N-1}e^{i\frac{2\pi}{N}kn}\cdot \bar e^{i\frac{2\pi}{N}ln}=\Sum_{n=0}^{N-1}e^{i\frac{2\pi}{N}(k-l)n}
-```
+負の周波数 $n$ まで拡張することで，$\cos(nt) = \frac{e^{int}+e^{-int}}{2}$ のように，正負の回転の合成としてすべての実信号を表現可能となる．
 
-ここで $r=e^{i\frac{2\pi}{N}(l-k)}$ と置くと，この式は，初項1, 項比rの等比級数の和になる．
-```math
-\text{Sum}=1+e+r^2+\dots + r^{N-1}=\frac{1-r^N}{1-r}
-```
+## 2.5 離散化と直交性
 
-ここで
-```math
-r^N=(e^{i\frac{2\pi}{N}(k-l)})^N = e^{i2\pi (k-l)}=1
-```
+連続信号 $x(t)$ を $N$ 点にサンプリングしたベクトル $\mathbf{x}=[x[0], \dots, x[N-1]]$ を考える．同様に基底関数 $e^{i\omega t}$ も離散化する．
+周波数 $k$ の基底ベクトル $\mathbf{w}_k$ の第 $n$ 成分は以下のように書ける．
 
-よって，内積はゼロであり，離散化しても異なる周波数の波は直交することがわかる．
+$$
+w_k[n] = e^{i\frac{2\pi}{N}kn} \quad (n=0, 1, \dots, N-1)
+$$
+
+異なる周波数 $k$ と $l$ ($k \neq l$) を持つ2つの基底ベクトルの内積を計算する．
+
+$$
+\langle \mathbf{w}_k , \mathbf{w}_l \rangle = \sum_{n=0}^{N-1} e^{i\frac{2\pi}{N}kn} \cdot e^{-i\frac{2\pi}{N}ln} = \sum_{n=0}^{N-1} e^{i\frac{2\pi}{N}(k-l)n}
+$$
+
+ここで $r = e^{i\frac{2\pi}{N}(k-l)}$ と置くと，この式は初項 $1$，公比 $r$ の等比級数の和となる．$k \neq l$ のとき $r \neq 1$ であるが，
+
+$$
+r^N = \left(e^{i\frac{2\pi}{N}(k-l)}\right)^N = e^{i2\pi (k-l)} = 1
+$$
+
+となるため，等比級数の和の公式より，
+
+$$
+\text{Sum} = \frac{1-r^N}{1-r} = \frac{1-1}{1-r} = 0
+$$
+
+よって，離散化しても異なる周波数の基底ベクトルは互いに直交することが示された．
 
 ## 2.6 DFT行列
-任意の信号ベクトル $\mathbf{x}$ を，これらの直交基底 $\mathbf{w}_k$ の線型結合で表したい．係数（スペクトル）を $\mathbf{X}[k]$ とすると，
-```math
-\mathbf{X}[k]=\langle \mathbf{x}, mathbf{w}_k \rangle = \Sum_{n=0}^{N-1}x[n]e^{-i\frac{2\pi}{N}kn}
-```
 
-これを行列形式で書くと，巨大な行列 $\mathbf{F}$ が現れる．
-```math
-\begin{bmatrix} X[0] \\ \vdots \\ X[N-1] \end{bmatrix} = \begin{bmatrix} 1 & 1 & 1 & \dots \\ 1 & W & W^2 & \dots \\ 1 & W^2 & W^4 & \dots \\ \vdots & \vdots & \vdots & \ddots \end{bmatrix} \begin{bmatrix} x[0] \\ \vdots \\ x[N-1] \end{bmatrix}
-```
+信号ベクトル $\mathbf{x}$ を直交基底 $\mathbf{w}_k$ の線形結合で表した際の係数（スペクトル）を $\mathbf{X}[k]$ とする．
 
-この行列 $\mathbf{F}$ こそが，信号空間を時間軸から，周波数軸へ回転させる座標変換行列（DFT行列）である．また，この行列はヴァンデルモンド行列であり，かつユニタリ行列でもある．この性質はIDFT(逆離散フーリエ変換)を考える際に効力を発揮する．
+$$
+\mathbf{X}[k] = \langle \mathbf{x}, \mathbf{w}_k \rangle = \sum_{n=0}^{N-1} x[n] e^{-i\frac{2\pi}{N}kn}
+$$
+
+これを行列形式で記述すると，DFT行列 $\mathbf{F}$ が導かれる．回転因子 $W_N = e^{-i\frac{2\pi}{N}}$ を用いると，
+
+$$
+\begin{bmatrix} X[0] \\ X[1] \\ \vdots \\ X[N-1] \end{bmatrix} 
+= 
+\begin{bmatrix} 
+1 & 1 & 1 & \dots & 1 \\ 
+1 & W_N & W_N^2 & \dots & W_N^{N-1} \\ 
+1 & W_N^2 & W_N^4 & \dots & W_N^{2(N-1)} \\ 
+\vdots & \vdots & \vdots & \ddots & \vdots \\
+1 & W_N^{N-1} & W_N^{2(N-1)} & \dots & W_N^{(N-1)(N-1)}
+\end{bmatrix} 
+\begin{bmatrix} x[0] \\ x[1] \\ \vdots \\ x[N-1] \end{bmatrix}
+$$
+
+この行列 $\mathbf{F}$ は，信号空間を時間軸から周波数軸へ回転させる座標変換行列である．$\mathbf{F}$ はヴァンデルモンド行列の一種であり，かつ定数倍の違いを除いてユニタリ行列の性質を持つ．
 
 ## 2.7 スペクトル漏れと窓関数
-DFT行列の周期構造は，信号ベクトル $\mathbf{x}$ が $x_0$, $x_{N-1}$ において，なめらかに接続されていることを要請する．
 
-しかし，多くの信号はこの要請を満たせない．このとき $x_o$ と $x_{N-1}$ にはズレが発生し，DFTはこのズレの造形をすべての周波数の基底ベクトルを合成することで再現する．これが目的の周波数以外にエネルギーが飛び散るスペクトル漏れの実態である．
+DFTは信号が周期的である（$x[0]$ と $x[N-1]$ が滑らかに接続される）ことを暗に仮定している．
+しかし，実際の信号を有限区間で切り出すと，始端と終端に不連続なズレが生じることが多い．DFTはこの不連続性を表現するために，本来存在しない高周波成分まで動員して波形を合成しようとする．これが目的の周波数以外にエネルギーが拡散する「スペクトル漏れ」である．
 
-このズレを抹消するためにハニング窓を使用する．ハニング窓への要求は信号の両端を強制的にゼロに押しつぶすことである．これにより，元の信号の振幅情報は一部失われるが，スペクトル漏れによる汚染からは守られる．この要求を満たす数式として，ハニング窓 
-```math
-\mathbf{w}(n)=0.5-0.5cos(\frac{2\pi n}{N-1})
-```
+これを抑制するために「窓関数」を用いる．ハニング窓（Hanning Window）は，信号の両端を滑らかにゼロに減衰させることで不連続性を解消する．
 
-が定義される．
+$$
+w[n] = 0.5 - 0.5\cos\left(\frac{2\pi n}{N-1}\right)
+$$
 
-## 2.8 逆変換（IDFT）
-$\mathbf{X}$ から $\mathbf{x}$ を求めたい．数式的には，
-```math
-\mathbf{x}=\mathbf{F}^{-1}\mathbf{X}
-```
+これにより，振幅分解能は多少犠牲になるが，スペクトル漏れによる信号の汚染を防ぐことができる．
 
-により求められるはずだ．
+## 2.8 逆変換（IDFT）とユニタリ性
 
-通常巨大な行列の逆行列を求めることは困難であるが，DFT行列の持つユニタリ性により逆行列に近い行列を簡単に求めることができる．
+周波数領域 $\mathbf{X}$ から時間領域 $\mathbf{x}$ を復元する逆変換は，行列 $\mathbf{F}$ の逆行列を用いて記述される．
 
-$\mathbf{F}$ とそのエルミート共役 $\mathbf{F}^{\dagger}$ を掛けてみる．
-```math
-(F^{\dagger}F)_{mn}=\Sum_{k=0}^{N-1}e^{i\frac{2\pi}{N}k(m-n)}=\begin{bmatrix} N & 0 & \dots \\ 0 & N & \dots \\ \vdots & \vdots & \ddots \end{bmatrix} = N I
-```
+$$
+\mathbf{x} = \mathbf{F}^{-1}\mathbf{X}
+$$
 
-両辺をNで割れば，
-```math
-\frac{1}{N}\mathbf{F}^\dagger \mathbf{F} = I \Rightarrow \mathbf{F}^{-1}=\frac{1}{N}\mathbf{F}^\dagger
-```
+通常，逆行列の計算は計算コストが高いが，DFT行列の持つユニタリ性（に近い性質）により，以下の関係が成り立つ．
+行列 $\mathbf{F}$ とそのエルミート共役（随伴行列）$\mathbf{F}^{\dagger}$ の積を考える．
 
-すなわち，逆DFT行列は，元の行列の共役を取り， $\frac{1}{N}$ を掛けたものに等しい．
+$$
+(\mathbf{F}^{\dagger}\mathbf{F})_{mn} = \sum_{k=0}^{N-1} e^{i\frac{2\pi}{N}k(m-n)} = N \delta_{mn}
+$$
+
+ここで $\delta_{mn}$ はクロネッカーのデルタである．これより $\mathbf{F}^{\dagger}\mathbf{F} = N \mathbf{I}$ （$\mathbf{I}$ は単位行列）となるため，
+
+$$
+\mathbf{F}^{-1} = \frac{1}{N}\mathbf{F}^{\dagger}
+$$
+
+すなわち，逆DFT行列は，元の行列の複素共役を取り，係数 $1/N$ を掛けるだけで求まる．これがIDFTの計算原理である．
+
 # 3. 方法 (Methods)
 ## 3.1 実験環境・使用機器 (Environment & Equipment)
 * OS: 
