@@ -3,16 +3,27 @@ use std::f64::consts::{PI};
 
 fn main() {
     println!("Hello, world!");
-    let mut sig = Vec::new();
     
-    for i in 0..8 {
-        sig.push(Complex::new((2.0 * PI * 2.5 * i as f64 / 8.0).sin(), 0.0));
+    let mut sig_data = Vec::new();
+    let n = 8;
+    for i in 0..n {
+        let t = i as f64;
+        sig_data.push(Complex::new((2.0 * PI * 2.5 * t / 8.0).sin(), 0.0));
     }
-    let mut spectrum = Signal::new(sig);
-    spectrum = spectrum * Signal::create_hanning(sig.data.len());
-    spectrum = Signal::dft(&spectrum);
-    for i in 0..8 {
-        println!("data{}: ({})+i({})", i, spectrum.data[i].re, spectrum.data[i].im);
+    let raw_signal = Signal::new(sig_data);
+
+    // ハニング窓を適用
+    let hanning_window = Signal::create_hanning(n);
+    let windowed_signal = raw_signal.clone() * hanning_window;
+
+    // DFT Transform
+    let spectrum = windowed_signal.dft();
+
+    println!("--- Spectrum (With Hanning Window) ---");
+    for k in 0..n {
+        let amp = spectrum.data[k].norm(); // 振幅表示
+        println!("k={}: Re={:.4}, Im={:.4}, Mag={:.4}",
+            k, spectrum.data[k].re, spectrum.data[k].im, amp);
     }
 }
 
@@ -57,19 +68,31 @@ impl Complex {
             im: -1.0 * self.im,
         }
     }
+
+    fn norm(&self) -> f64 {
+        (self.re * self.re + self.im * self.im).sqrt()
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Signal {
     data: Vec<Complex>,
 }
 
+// アダマール積
 impl Mul for Signal {
-    type Output: Signal;
-    fn mul (self, other: Signal) -> Signal {
-        for i in 0..self.data.len() {
-            self.data[i] = self.data[i] * other.data[i];
+    type Output = Signal;
+
+    fn mul(self, other: Signal) -> Signal {
+        if self.data.len() != other.data.len() {
+            panic!("Vector dimension mismatch in Hadamard product");
         }
+
+        let mut new_data = Vec::with_capacity(self.data.len());
+        for i in 0..self.data.len() {
+            new_data.push(self.data[i] * other.data[i]);
+        }
+        Signal::new(new_data)
     }
 }
 
@@ -91,7 +114,6 @@ impl Signal {
             let term = self.data[i] * other.data[i].conjugate();
             sum = sum + term;
         }
-
         Ok(sum)
     }
 
@@ -99,13 +121,14 @@ impl Signal {
         // 周波数 k の基底ベクトル e_k を生成
         let mut data = Vec::with_capacity(n);
         for i in 0..n {
-            data.push(Complex::new((2.0 * PI * k as f64 * i as f64 / n as f64).cos(), (2.0 * PI * k as f64 * i as f64 / n as f64).sin()));
+            let theta = 2.0 * PI * (k as f64) * (i as f64) / (n as f64);
+            data.push(Complex::new(theta.cos(), theta.sin()));
         }
-
         Signal::new(data)
     }
 
     // DFT: X[k] = <x, e_k>
+    // 信号xを基底e_kに射影する
     fn dft(&self) -> Signal {
         let n = self.data.len();
         let mut spectrum_data = Vec::with_capacity(n);
@@ -119,12 +142,13 @@ impl Signal {
         Signal::new(spectrum_data)
     }
 
-    fn create_hanning(&self, n: usize) -> Signal {
+    // ハニング窓の生成
+    // w[n] = 0.5 - 0.5 * cos(2πn / (N-1))
+    fn create_hanning(n: usize) -> Signal {
         let mut hanning = Vec::with_capacity(n);
         for i in 0..n {
-            hanning.push(Complex::new(0.5 - 0.5 * 2.0 * PI * i as f64 / (n as f64 - 1.0), 0.0));
+            hanning.push(Complex::new(0.5 - 0.5 * (2.0 * PI * i as f64 / (n as f64 - 1.0)).cos(), 0.0));
         }
-
         Signal::new(hanning)
     }
 }
