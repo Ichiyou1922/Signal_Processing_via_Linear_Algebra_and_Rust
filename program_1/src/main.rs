@@ -2,28 +2,32 @@ use std::ops::{Add, Mul};
 use std::f64::consts::{PI};
 
 fn main() {
-    println!("Hello, world!");
-    
+    // println!("Hello, world!");
+   
+    println!("k,mag_rect,mag_hann");
+
+    // 信号生成: 周波数2.5(非整数)->スペクトル漏れが発生するはず
     let mut sig_data = Vec::new();
-    let n = 8;
+    let n = 32;
     for i in 0..n {
         let t = i as f64;
         sig_data.push(Complex::new((2.0 * PI * 2.5 * t / 8.0).sin(), 0.0));
     }
     let raw_signal = Signal::new(sig_data);
 
-    // ハニング窓を適用
+    // 窓なし->DFT
+    let spec_rect = raw_signal.dft();
+
+    // ハニング窓を適用->DFT
     let hanning_window = Signal::create_hanning(n);
     let windowed_signal = raw_signal.clone() * hanning_window;
+    let spec_hann = windowed_signal.dft();
 
-    // DFT Transform
-    let spectrum = windowed_signal.dft();
-
-    println!("--- Spectrum (With Hanning Window) ---");
+    // データ出力
     for k in 0..n {
-        let amp = spectrum.data[k].norm(); // 振幅表示
-        println!("k={}: Re={:.4}, Im={:.4}, Mag={:.4}",
-            k, spectrum.data[k].re, spectrum.data[k].im, amp);
+        let mag_r = spec_rect.data[k].norm();
+        let mag_h = spec_hann.data[k].norm() * 2.0; //2.0はハニング窓による減衰の補正
+        println!("{},{:.6},{:.6}", k, mag_r, mag_h);
     }
 }
 
